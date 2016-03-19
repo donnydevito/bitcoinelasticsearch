@@ -8,7 +8,7 @@ from time import sleep
 TIMEZONE = pytz.timezone('UTC')
 KRAKEN_API_HOST = "https://api.kraken.com"
 ELASTICSEARCH_HOST = "https://search-bitcoins-2sfk7jzreyq3cfjwvia2mj7d4m.us-west-2.es.amazonaws.com"
-DEFAULT_INDEX = "eth_orderbooks_live"
+DEFAULT_INDEX = "crypto_orderbooks"
 DEFAULT_DOC_TYPE = "kraken_ethereum"
 SLEEP_INTERVAL = 7.5
 def getArgs(): 
@@ -54,10 +54,11 @@ def getOrderbookMapping():
 			"properties": {
 					"uuid": { "type": "string", "index": "no"}, 
 					"date": {"type": "date"},
+					"currency_pair": { "type" : "string"}, 
 					"timestamp": {"type": "string", "index": "no"}, 
 					"price": {"type": "float"},
-					"relative_volume": {"type":"string"}, 
-					"volume": {"type":"string"}, 
+					"absolute_volume": {"type":"float"}, 
+					"volume": {"type":"float"}, 
 					"order_type": {"type": "string"}
 			}
 		}
@@ -73,7 +74,7 @@ def getCurrentDate():
 	recordDate = datetime.datetime.now(TIMEZONE)
 	return recordDate
 
-def createOrderbookDto(orderbookData, orderType): 
+def createOrderbookDto(orderbookData, orderType, displayPair="BTC_ETH"): 
 	orderbookEntry = {}
 	orderbookEntry["uuid"] = getUniqueId()
 	orderbookEntry["date"] = getCurrentDate()
@@ -82,14 +83,15 @@ def createOrderbookDto(orderbookData, orderType):
 	else: 
 		volumeVal = float(orderbookData[1])
 		orderbookEntry["price"] = float(orderbookData[0])
-		orderbookEntry["volume"] = volumeVal
+		orderbookEntry["absolute_volume"] = volumeVal
 		orderbookEntry["timestamp"] = str(orderbookData[2])
 		orderbookEntry["order_type"] = orderType
+		orderbookEntry["currency_pair"] = str(displayPair)
 		if orderType.upper() == "BID": 
-			orderbookEntry["relative_volume"] = volumeVal
+			orderbookEntry["volume"] = float(volumeVal)
 		elif orderType.upper() == "ASK": 
 			newVal = volumeVal * -1 
-			orderbookEntry["relative_volume"] = float(newVal)
+			orderbookEntry["volume"] = float(newVal)
 		else: 
 			raise IOError("order_type must be either bid or ask") 
 	return orderbookEntry
@@ -122,7 +124,7 @@ def injectEntry(entryData, indexName=DEFAULT_INDEX, docType=DEFAULT_DOC_TYPE):
 if __name__ == "__main__": 
 	args = getArgs()
 	orderbook = getOrderbook(args.currency)
-	es = elasticsearch.Elasticsearch([ELASTICSEARCH_HOST])
+	es = elasticsearch.Elasticsearch([ELASTICSEARCH_HOST], verify_ssl=True)
 	mapping = getOrderbookMapping()
 	initializeIndexConfiguration(es, mapping)
 
